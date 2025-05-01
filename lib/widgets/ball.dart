@@ -34,13 +34,12 @@ class BallWidget extends StatelessWidget {
         width: ball.radius * 2,
         height: ball.radius * 2,
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: Colors.white,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.green,
-              spreadRadius: 2,
-              blurRadius: 20,
+              color: Colors.white,
+              blurRadius: 10,
             ),
           ],
           shape: BoxShape.circle,

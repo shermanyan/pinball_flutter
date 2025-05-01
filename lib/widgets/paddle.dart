@@ -39,12 +39,12 @@ class Paddle extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
+          color: Colors.white,
           border: Border.all(color: theme.colorScheme.secondary, width: 2),
           boxShadow: [
             BoxShadow(
-              color: theme.colorScheme.primary,
-              blurRadius: 10,
+              color: Colors.white,
+              blurRadius: 5,
             ),
           ],
           borderRadius: BorderRadius.circular(4),

@@ -26,6 +26,12 @@ class GameCubit extends Cubit<GameState> {
   void endGame(int finalScore) =>
       emit(GameState(status: GameStatus.gameOver, score: finalScore));
 
-  /// Resets to a new game state
-  void resetGame() => emit(const GameState(status: GameStatus.newGame));
+  /// Resets to a new‐game state
+  void resetGame() =>
+      emit(const GameState(status: GameStatus.newGame, score: 0));
+
+  /// Updates score
+  void incrementScore() {
+    emit(state.copyWith(score: state.score + 1));
+  }
 }
