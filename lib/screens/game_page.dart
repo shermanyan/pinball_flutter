@@ -1,138 +1,66 @@
-// lib/screens/game_page.dart
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 import '../widgets/ball.dart';
 import '../widgets/paddle.dart';
 import '../widgets/obstacle.dart';
 import '../game_state.dart';
 
 class GamePage extends StatefulWidget {
-  const GamePage({Key? key}) : super(key: key);
+  const GamePage({super.key});
+
   @override
-  _GamePageState createState() => _GamePageState();
+  State<GamePage> createState() => _GamePageState();
 }
 
-class _GamePageState extends State<GamePage>
-    with SingleTickerProviderStateMixin {
-  // Ball & animation
-  late final AnimationController _controller;
-  late DateTime _lastTime;
-  late Ball _ball;
-  static const double _ballRadius = 10.0;
+class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
+  late BallController ballController;
+  late RotatingPaddleController leftPaddleController;
+  late RotatingPaddleController rightPaddleController;
+  late ObstacleController obstacleController;
 
-  // Paddle position
-  late final PaddleController _paddleController;
-  double _paddleX = 0.0;
-
-  // Obstacles
-  late final ObstacleController _obController;
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    // Ball
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(hours: 1))
-          ..addListener(_onFrame);
-    _lastTime = DateTime.now();
-    _resetBall();
-
-    // Paddle setup after layout
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final screenW = MediaQuery.of(context).size.width;
-      final initialX = defaultPaddleX(screenW, 80.0);
-      _paddleX = initialX;
-      _paddleController = PaddleController(
-        x: initialX,
-        speed: 300,
-        minX: 0,
-        maxX: screenW - 80.0,
-        onMove: (newX) => setState(() => _paddleX = newX),
-      );
+      final screen =
+          View.of(context).physicalSize / View.of(context).devicePixelRatio;
+
+      setState(() {
+        ballController = BallController(
+            startPosition: Offset(screen.width / 2, screen.height / 2),
+            speed: -400);
+
+        final screenWidth = View.of(context).physicalSize.width /
+            View.of(context).devicePixelRatio;
+
+        leftPaddleController = RotatingPaddleController(
+          vsync: this,
+          position: Offset((screenWidth / 2) - 120, screen.height - 80),
+          id: PaddleSide.left,
+        );
+
+        rightPaddleController = RotatingPaddleController(
+          vsync: this,
+          position: Offset((screenWidth / 2) + 120, screen.height - 80),
+          id: PaddleSide.right,
+        );
+        obstacleController = ObstacleController(
+          onHit: (o) => context.read<GameCubit>().incrementScore(),
+          onUpdate: () => setState(() {}),
+        );
+        obstacleController.start();
+      });
     });
-
-    // Obstacles
-    _obController = ObstacleController(
-      onHit: (obs) => context.read<GameCubit>().incrementScore(),
-      onUpdate: () => setState(() {}),
-      maxObstacles: 8,
-      minInterval: const Duration(seconds: 1),
-      maxInterval: const Duration(seconds: 3),
-    );
-    _obController.start();
-  }
-
-  void _resetBall() {
-    _ball = Ball(
-      position: const Offset(180, 320),
-      velocity: Offset.fromDirection(
-        (Random().nextDouble() * 2 * pi).clamp(2 * pi / 3, 5 * pi / 6),
-        -300,
-      ),
-      radius: _ballRadius,
-    );
-  }
-
-  void _onFrame() {
-    final now = DateTime.now();
-    final dt = now.difference(_lastTime).inMilliseconds / 1000;
-    _lastTime = now;
-    final size = MediaQuery.of(context).size;
-
-    // Ball
-    Offset pos = _ball.position + _ball.velocity * dt;
-    Offset vel = _ball.velocity;
-
-    // Walls
-    if ((pos.dx - _ball.radius <= 0 && vel.dx < 0) ||
-        (pos.dx + _ball.radius >= size.width && vel.dx > 0)) {
-      vel = Offset(-vel.dx, vel.dy);
-    }
-    if (pos.dy - _ball.radius <= 0 && vel.dy < 0) {
-      vel = Offset(vel.dx, -vel.dy);
-    }
-
-    // Paddle
-    final paddleTop = size.height - 20.0 - 20.0;
-    if (vel.dy > 0 &&
-        pos.dy + _ball.radius >= paddleTop &&
-        _ball.position.dy + _ball.radius < paddleTop &&
-        pos.dx >= _paddleX &&
-        pos.dx <= _paddleX + 80.0) {
-      vel = Offset(vel.dx, -vel.dy);
-      pos = Offset(pos.dx, paddleTop - _ball.radius);
-    }
-
-    // Obstacles
-    final before = _obController.obstacles.length;
-    _obController.checkCollisions(pos, padding: _ball.radius);
-    if (_obController.obstacles.length < before) {
-      vel = Offset(vel.dx, -vel.dy);
-      pos = _ball.position;
-    }
-
-    // Game Over
-    if (pos.dy - _ball.radius >= size.height) vel = Offset.zero;
-
-    final next = Ball(position: pos, velocity: vel, radius: _ballRadius);
-    if (next.velocity == Offset.zero) {
-      _controller.stop();
-      context.read<GameCubit>().endGame(context.read<GameCubit>().state.score);
-    }
-    setState(() => _ball = next);
-  }
-
-  void _startGame() {
-    _resetBall();
-    _lastTime = DateTime.now();
-    _controller.repeat();
+    _focusNode.requestFocus();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    _obController.stop();
+    obstacleController.stop();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -142,27 +70,70 @@ class _GamePageState extends State<GamePage>
       listenWhen: (p, c) => p.status != c.status,
       listener: (ctx, state) {
         if (state.status == GameStatus.playing) {
-          _startGame();
-        } else {
-          _controller.stop();
+          setState(() {});
+          ballController.start();
         }
       },
       child: BlocBuilder<GameCubit, GameState>(
-        builder: (ctx, state) => Stack(
-          children: [
-            AnimatedBuilder(
-              animation: _controller,
-              builder: (_, __) => BallWidget(ball: _ball),
+        builder: (ctx, state) {
+          return KeyboardListener(
+            focusNode: _focusNode,
+            onKeyEvent: (KeyEvent event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  leftPaddleController.flipUp();
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  rightPaddleController.flipUp();
+                }
+              } else if (event is KeyUpEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  leftPaddleController.flipDown();
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  rightPaddleController.flipDown();
+                }
+              }
+            },
+            child: Stack(
+              children: [
+                if (state.status == GameStatus.playing)
+                  Positioned(
+                    top: 20,
+                    right: 20,
+                    child: Text(
+                      '${state.score}',
+                      style: const TextStyle(
+                        fontFamily: 'Orbitron',
+                        color: Colors.white,
+                        fontSize: 24,
+                        decoration: TextDecoration.none,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 10,
+                            color: Colors.yellowAccent,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                BallWidget(
+                    controller: ballController,
+                    leftPaddleController: leftPaddleController,
+                    rightPaddleController: rightPaddleController,
+                    obstacleController: obstacleController,
+                    onGameOver: () {
+                      context.read<GameCubit>().endGame(state.score);
+                    }),
+                RotatingPaddleWidget(controller: leftPaddleController),
+                RotatingPaddleWidget(controller: rightPaddleController),
+                for (final ob in obstacleController.obstacles)
+                  AnimatedObstacleWidget(key: ValueKey(ob.id), obstacle: ob),
+                if (state.status == GameStatus.newGame) const NewGameOverlay(),
+                if (state.status == GameStatus.gameOver)
+                  GameOverOverlay(score: state.score),
+              ],
             ),
-            for (final o in _obController.obstacles)
-              AnimatedObstacleWidget(key: ValueKey(o.id), obstacle: o),
-            if (state.status == GameStatus.newGame) const NewGameOverlay(),
-            if (state.status == GameStatus.gameOver)
-              GameOverOverlay(score: state.score),
-            // Paddle
-            const PaddleWidget(),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -179,8 +150,10 @@ class NewGameOverlay extends StatelessWidget {
         children: [
           const SizedBox(height: 40),
           const TitleText(),
-          const SizedBox(height: 120),
-          const PlayButton(),
+          const SizedBox(height: 150),
+          Positioned(
+            child: const PlayButton(),
+          ),
         ],
       ),
     );
@@ -207,7 +180,7 @@ class GameOverOverlay extends StatelessWidget {
           shadows: [
             Shadow(
               blurRadius: 30,
-              color: Theme.of(c).colorScheme.primary,
+              color: Colors.yellowAccent,
             )
           ],
           fontSize: 40,

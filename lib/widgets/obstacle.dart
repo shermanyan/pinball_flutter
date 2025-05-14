@@ -65,15 +65,16 @@ class ObstacleController {
 
   List<Obstacle> get obstacles => List.unmodifiable(_obstacles);
 
-  void checkCollisions(Offset point, {double padding = 0}) {
+  bool checkCollisions(Offset point, {double padding = 0}) {
     for (final o in List.of(_obstacles)) {
       if (o.hitTest(point, padding: padding)) {
         onHit(o);
         _obstacles.remove(o);
         onUpdate();
-        break;
+        return true;
       }
     }
+    return false;
   }
 
   void _scheduleNextSpawn() {
@@ -90,8 +91,9 @@ class ObstacleController {
     final missing = maxObstacles - _obstacles.length;
     if (missing <= 0) return;
     final count = _rnd.nextInt(missing + 1);
-    final screen = WidgetsBinding.instance.window.physicalSize /
-        WidgetsBinding.instance.window.devicePixelRatio;
+    final screen = WidgetsBinding
+            .instance.platformDispatcher.views.first.physicalSize /
+        WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
     final yMax = screen.height / 3;
     for (var i = 0; i < count; i++) {
       final shape =
@@ -99,7 +101,7 @@ class ObstacleController {
       final color = [Colors.red, Colors.blue, Colors.yellow][_rnd.nextInt(3)];
       const size = 32.0;
       final x = size / 2 + _rnd.nextDouble() * (screen.width - size);
-      final y = size / 2 + _rnd.nextDouble() * (yMax - size);
+      final y = size / 2 + _rnd.nextDouble() * (yMax - size) + 20;
       _obstacles.add(Obstacle(
         id: _nextId++,
         position: Offset(x, y),
@@ -228,6 +230,12 @@ class _AnimatedObstacleWidgetState extends State<AnimatedObstacleWidget>
         child: Icon(
           _shapeToIcon(widget.obstacle.shape),
           color: widget.obstacle.color,
+          shadows: [
+            Shadow(
+              blurRadius: 2.0,
+              color: widget.obstacle.color,
+            ),
+          ],
           size: widget.obstacle.size,
         ),
       ),

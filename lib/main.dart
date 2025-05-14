@@ -43,7 +43,6 @@ class PinballApp extends StatelessWidget {
               create: (_) => GameCubit(),
               child: const GamePage(),
             ),
-        // '/customize': (context) => const CustomizePage(),
       },
     );
   }

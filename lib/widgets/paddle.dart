@@ -1,159 +1,117 @@
+// -------------------------
 // lib/widgets/paddle.dart
-
-import 'dart:async';
+// -------------------------
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-/// Computes the centered X for the paddle
-double defaultPaddleX(double screenWidth, double paddleWidth) {
-  return (screenWidth - paddleWidth) / 2;
-}
+enum PaddleSide { left, right }
 
-/// Callback when the paddle moves
-typedef PaddlePositionCallback = void Function(double x);
+class Paddle {
+  final PaddleSide id;
+  Offset position;
+  double length;
+  double width;
+  double angle;
 
-/// Manages paddle movement logic (drag + keyboard hold)
-class PaddleController {
-  double x;
-  final double speed;
-  final double minX;
-  final double maxX;
-  final PaddlePositionCallback onMove;
+  Paddle({
+    required this.id,
+    this.position = Offset.zero,
+    required this.length,
+    required this.width,
+    double? angle,
+  }) : angle = angle ?? 0.0;
 
-  PaddleController({
-    required this.x,
-    required this.speed,
-    required this.minX,
-    required this.maxX,
-    required this.onMove,
-  });
-
-  void drag(double delta) {
-    x = (x + delta).clamp(minX, maxX);
-    onMove(x);
-  }
-
-  void moveLeft(double dt) {
-    x = (x - speed * dt).clamp(minX, maxX);
-    onMove(x);
-  }
-
-  void moveRight(double dt) {
-    x = (x + speed * dt).clamp(minX, maxX);
-    onMove(x);
+  bool hitTest(Offset point, {double padding = 0}) {
+    final dx = point.dx - position.dx;
+    final dy = point.dy - position.dy;
+    final c = cos(-angle), s = sin(-angle);
+    final localX = dx * c - dy * s;
+    final localY = dx * s + dy * c;
+    final halfLen = length / 2 + padding;
+    final halfWid = width / 2 + padding;
+    return localX >= -halfLen &&
+        localX <= halfLen &&
+        localY >= -halfWid &&
+        localY <= halfWid;
   }
 }
 
-/// A paddle widget that handles its own input and rendering.
-class PaddleWidget extends StatefulWidget {
-  final double width;
-  final double height;
-  final double bottomOffset;
+class RotatingPaddleController {
+  final Paddle paddle;
+  final AnimationController _animCtrl;
+  late final Animation<double> angleAnim;
+  static const double _maxAngle = pi / 4;
+  static const double _minAngle = -pi / 12;
 
-  const PaddleWidget({
-    Key? key,
-    this.width = 80.0,
-    this.height = 20.0,
-    this.bottomOffset = 20.0,
-  }) : super(key: key);
+  RotatingPaddleController({
+    required TickerProvider vsync,
+    required Offset position,
+    required PaddleSide id,
+    double length = 105,
+    double width = 25,
+    Duration duration = const Duration(milliseconds: 100),
+  })  : _animCtrl = AnimationController(vsync: vsync, duration: duration),
+        paddle = Paddle(
+          id: id,
+          position: position,
+          length: length,
+          width: width,
+          angle: id == PaddleSide.left ? -_minAngle : _minAngle,
+        ) {
+    final begin = paddle.angle;
+    final target = id == PaddleSide.left ? -_maxAngle : _maxAngle;
+    angleAnim = Tween<double>(begin: begin, end: target)
+        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut))
+      ..addListener(() {
+        paddle.angle = angleAnim.value;
+      });
+  }
 
-  @override
-  _PaddleWidgetState createState() => _PaddleWidgetState();
+  void flipUp() => _animCtrl.forward();
+  void flipDown() => _animCtrl.reverse();
+  void dispose() => _animCtrl.dispose();
 }
 
-class _PaddleWidgetState extends State<PaddleWidget> {
-  late final PaddleController _controller;
-  late final FocusNode _focusNode;
-  late final Timer _timer;
-  bool _moveLeft = false;
-  bool _moveRight = false;
+class RotatingPaddleWidget extends StatelessWidget {
+  final RotatingPaddleController controller;
 
-  @override
-  void initState() {
-    super.initState();
-    _focusNode = FocusNode();
-    // auto-focus
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
-    // key-hold ticker (~60fps)
-    _timer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      const dt = 16 / 1000;
-      if (_moveLeft) _controller.moveLeft(dt);
-      if (_moveRight) _controller.moveRight(dt);
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final screenW = MediaQuery.of(context).size.width;
-    final startX = defaultPaddleX(screenW, widget.width);
-    _controller = PaddleController(
-      x: startX,
-      speed: 300.0,
-      minX: 0.0,
-      maxX: screenW - widget.width,
-      onMove: (_) => setState(() {}),
-    );
-  }
-
-  @override
-  void dispose() {
-    _focusNode.dispose();
-    _timer.cancel();
-    super.dispose();
-  }
-
-  void _handleKey(RawKeyEvent event) {
-    if (event is RawKeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        _moveLeft = true;
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        _moveRight = true;
-      }
-    } else if (event is RawKeyUpEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        _moveLeft = false;
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        _moveRight = false;
-      }
-    }
-  }
+  const RotatingPaddleWidget({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    return RawKeyboardListener(
-      focusNode: _focusNode,
-      onKey: _handleKey,
-      child: GestureDetector(
-        onHorizontalDragUpdate: (details) => _controller.drag(details.delta.dx),
-        child: Stack(
-          children: [
-            Positioned(
-              left: _controller.x,
-              top: MediaQuery.of(context).size.height -
-                  widget.bottomOffset -
-                  widget.height,
+    final p = controller.paddle;
+    final halfH = p.width / 2;
+    Alignment alignment;
+    double left;
+    if (p.id == PaddleSide.left) {
+      alignment = Alignment.centerLeft;
+      left = p.position.dx;
+    } else {
+      alignment = Alignment.centerRight;
+      left = p.position.dx - p.length;
+    }
+    final top = p.position.dy - halfH;
+
+    return AnimatedBuilder(
+        animation: controller.angleAnim,
+        builder: (_, __) {
+          return Positioned(
+            left: left,
+            top: top,
+            child: Transform.rotate(
+              angle: p.angle,
+              alignment: alignment,
               child: Container(
-                width: widget.width,
-                height: widget.height,
+                width: p.length,
+                height: p.width,
                 decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(4.0),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(p.width / 2),
+                  boxShadow: [BoxShadow(color: Colors.white, blurRadius: 2)],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
+          );
+        });
   }
 }
